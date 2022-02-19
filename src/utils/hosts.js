@@ -24,7 +24,7 @@ const notification = async message => {
 
 const createDir = async () => {
   return new Promise(resolve => {
-    exec(`mkdir ${root}/hosts`, (err, stdout, stderr) => {
+    exec(`mkdir -p ${root}/hosts`, (err, stdout, stderr) => {
       if (err) {
         throw err;
       }
