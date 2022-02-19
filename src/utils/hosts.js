@@ -1,6 +1,7 @@
 import fs from 'fs';
 import { exec } from 'child_process';
 import { NOTIFICATION_URI } from '../config/env.config.js';
+import { message } from './message.js';
 import path from 'path';
 import fetch from 'node-fetch';
 
@@ -17,9 +18,7 @@ const sleep = () => {
 
 const notification = async message => {
   await sleep();
-  const res = await fetch(`${NOTIFICATION_URI}/路由器通知/${message}`);
-  const data = await res.json();
-  console.log(data);
+  await fetch(`${NOTIFICATION_URI}/路由器通知/${message}`);
   return true;
 }
 
@@ -34,37 +33,68 @@ const createDir = async () => {
   });
 }
 
+const checkIPisOnline = ip => {
+  return new Promise(resolve => {
+    exec(`ping -c 2 ${ip}`, (err) => {
+      if (err) {
+        console.log(`
+        ERROR: ${ip}:
+        ${err}
+        `)
+        resolve(false);
+        return;
+      }
+      resolve(true);
+    });
+  });
+}
+
 export const handleHosts = async hosts => {
   for (const host of hosts) {
-    const { InterfaceType, HostName, ActualName, IPAddress, Active, ID } = host;
-    const hostData = {
-      online: Active ? 'online' : 'offline',
-      hostName: HostName,
-      hostAlias: ActualName,
-      netType: InterfaceType,
-      ip: IPAddress,
-      id: ID
-    }
-    if (!fs.existsSync(`${root}/hosts`)) {
-      await createDir();
-    }
-    if (!fs.existsSync(`${root}/hosts/${ID}`)) {
-      fs.writeFileSync(`${root}/hosts/${ID}`, JSON.stringify(hostData), { encoding: 'utf8' })
-      await notification(`新设备: ${HostName} | ${hostData.netType === 'Ethernet' ? '有线' : '无线'} | ${hostData.online === 'online' ? '在线' : '离线'} | ${IPAddress}`);
-    } else {
-      const info = JSON.parse(fs.readFileSync(`${root}/hosts/${ID}`).toString().replace('\n', ''));
+    const {InterfaceType, HostName, ActualName, IPAddress, ID, LeaseTime} = host;
+    if (LeaseTime > 0) {
+      const isOnline = await checkIPisOnline(IPAddress);
+      const hostData = {
+        online: isOnline ? 'online' : 'offline',
+        hostName: HostName,
+        hostAlias: ActualName,
+        netType: InterfaceType,
+        ip: IPAddress,
+        id: ID
+      }
+      let isNewDevice = false;
       let isUpdate = false
-      Object.entries(info).forEach(([key, value]) => {
-        if (DIFF_KEYS.includes(key) && info[key] !== value) {
-          info[key] = hostData[key];
-          console.log(info[key], hostData[key])
-          isUpdate = true;
-        }
-      });
 
-      if (isUpdate) {
-        fs.writeFileSync(`${root}/hosts/${ID}`, JSON.stringify(hostData), {encoding: 'utf8'});
-        await notification(`设备：${HostName} | ${ActualName ? `设备别名：${ActualName}` : ''} | ${hostData.netType} | ${hostData.online} | ${IPAddress}`);
+      if (!fs.existsSync(`${root}/hosts`)) {
+        await createDir();
+      }
+
+      if (!fs.existsSync(`${root}/hosts/${ID}`)) {
+        isNewDevice = true;
+        fs.writeFileSync(`${root}/hosts/${ID}`, JSON.stringify(hostData), {encoding: 'utf8'})
+      } else {
+        isNewDevice = false;
+        const info = JSON.parse(fs.readFileSync(`${root}/hosts/${ID}`).toString().replace('\n', ''));
+        Object.entries(info).forEach(([key, value]) => {
+          if (DIFF_KEYS.includes(key) && hostData[key] !== value) {
+            isUpdate = true;
+          }
+        });
+        if (isUpdate) {
+          fs.writeFileSync(`${root}/hosts/${ID}`, JSON.stringify(hostData), {encoding: 'utf8'});
+        }
+      }
+
+      if (isNewDevice || isUpdate) {
+        const messageContent = message({
+          isNew: isNewDevice,
+          hostName: hostData.hostName,
+          netType: hostData.netType,
+          online: hostData.online,
+          ip: hostData.ip,
+          hostAlias: hostData.hostAlias
+        })
+        await notification(messageContent);
       }
     }
   }
