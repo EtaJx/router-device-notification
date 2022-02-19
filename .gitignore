@@ -1,0 +1,4 @@
+hosts/*
+.idea
+.env
+node_modules
