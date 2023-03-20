@@ -18,7 +18,11 @@ const sleep = () => {
 
 const notification = async message => {
   await sleep();
-  await fetch(`${NOTIFICATION_URI}/路由器通知/${message}`);
+  try {
+    await fetch(`${NOTIFICATION_URI}/路由器通知/${message}`);
+  } catch (e) {
+    console.log(`notification failed: ${e}`)
+  }
   return true;
 }
 
@@ -50,6 +54,9 @@ const checkIPisOnline = ip => {
 }
 
 export const handleHosts = async hosts => {
+  if (!fs.existsSync(`${root}/hosts`)) {
+    await createDir();
+  }
   for (const host of hosts) {
     const {InterfaceType, HostName, ActualName, IPAddress, ID, LeaseTime} = host;
     if (LeaseTime > 0) {
@@ -64,10 +71,6 @@ export const handleHosts = async hosts => {
       }
       let isNewDevice = false;
       let isUpdate = false
-
-      if (!fs.existsSync(`${root}/hosts`)) {
-        await createDir();
-      }
 
       if (!fs.existsSync(`${root}/hosts/${ID}`)) {
         isNewDevice = true;
@@ -95,6 +98,8 @@ export const handleHosts = async hosts => {
           hostAlias: hostData.hostAlias
         })
         await notification(messageContent);
+      } else {
+        console.log('no update')
       }
     }
   }
